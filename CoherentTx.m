@@ -148,7 +148,7 @@ classdef CoherentTx < handle
             Pch = (10 .^ (Pch_dBm / 10)) * 1e-3;
         end
 
-        % 调制后的信号
+        % 调制后的信号，进行功率转换
         function  signal=setSignalPower(obj,input,Channel_power_type,Pin_dBm)
             % 转换为W
             Pin=obj.dBTow(Pin_dBm);
