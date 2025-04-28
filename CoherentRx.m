@@ -69,8 +69,8 @@ classdef CoherentRx < handle
             [~, t] = freq_time_set(num_signal, obj.signalPHY.fs);
 
             % x,y偏振赋值
-            inx=input(:,1);
-            iny=input(:,2);
+            inx=input(1,:);
+            iny=input(2,:);
 
             % 初始参数
             N =12;
@@ -108,8 +108,8 @@ classdef CoherentRx < handle
 
         % 创建PMD模型
         function outSignal=addPMD(obj,input,tau_mean,sigma,w)
-         % PMD在每个频率段有不同的延时，一般情况下，w只取一个值
-
+            % PMD在每个频率段有不同的延时，一般情况下，w只取一个值
+            % 需要判断输入信号是否为2*N的形式
 
             N=12;%建模段数
             % tau_mean = 3; % average tau 3ps
@@ -131,10 +131,10 @@ classdef CoherentRx < handle
             arfa0 = pi+randn(N+1,1)*2*pi;
             phi0 = pi+randn(N+1,1)*2*pi;
             % 频率轴
-%             w_start = 1905;%1594nm            取中心波长的值
-%             w_stop = 1932;%1530nm             取中心波长加上信号的频宽的值
-%             w_spacing = 0.03; % angular freq spacing, unit: Trad/s       是不是应该取fs/length(signal)的长度
-%             w = w_start:w_spacing:w_stop; % unit: T rad/s
+            %             w_start = 1905;%1594nm            取中心波长的值
+            %             w_stop = 1932;%1530nm             取中心波长加上信号的频宽的值
+            %             w_spacing = 0.03; % angular freq spacing, unit: Trad/s       是不是应该取fs/length(signal)的长度
+            %             w = w_start:w_spacing:w_stop; % unit: T rad/s
 
 
             % 随时间变化的RSOP矩阵，每个时间下，应为N+1 长度
@@ -163,20 +163,37 @@ classdef CoherentRx < handle
             % U_i 为横轴为时间T，纵轴为频率w
             omega=cell(1,length(w));
             for j=1:length(w)
+                for K=1:N
+                    for i=1:length(t)
+                        if K==1
+                            % 输入信号
+                            U=input(:,i);
+                            H=[oo11(K,i),oo12(K,i);oo21(K,i),oo22(K,i)];
+                            % RSOP在时域上处理
+                            U1(:,i)=H*U;
+                        else
+                            % 输入信号
+                            U=UU(:,i);
+                            H=[oo11(K,i),oo12(K,i);oo21(K,i),oo22(K,i)];
+                            % RSOP在时域上处理
+                            U1(:,i)=H*U;
+                        end
+                    end
+                    % PMD矩阵
+                    B=[ee(K,j),0;0,ff(K,j)];
+                    % PMD在频率上处理,分偏振方向进行时频转换
+                    for index=1:2
+                        U_f(index,:)=fft(U1(index,:));
+                    end
+                    % PMD在频率上处理
+                    U1=ifft(B*U_f);
+                    % 传递变量
+                    UU=U1;
+                end
+                % 多一段的rsop
                 for i=1:length(t)
                     % 输入信号
-                    U=input(:,i);
-                    for K=1:N
-                        H=[oo11(K,i),oo12(K,i);oo21(K,i),oo22(K,i)];
-                        B=[ee(K,j),0;0,ff(K,j)];
-                        % RSOP在时域上处理
-                        U1=H*U;
-                        % PMD在频率上处理
-                        U_f=fft(U1);
-                        U1=ifft(B*U_f);
-                        U=U1;
-                    end
-                    % 多一段的rsop
+                    U=UU(:,i);
                     H_N1=[oo11(N+1,i),oo12(N+1,i);oo21(N+1,i),oo22(N+1,i)];
                     outSignal(:,i)=U*H_N1;
                 end
@@ -184,6 +201,8 @@ classdef CoherentRx < handle
             end
 
         end
+
+
 
 
 
