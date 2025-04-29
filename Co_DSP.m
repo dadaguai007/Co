@@ -133,3 +133,25 @@ else
 scatterplot(downsample(y_CPR_BPS,2))
 title('After PLL CPR and downsample')
 end
+
+
+
+
+% constellation = constellation / sqrt(bandpower(constellation));
+% % [mma_out_mimo, error_mimo, w_mimo] = mimo2_2_mma(y, 21, [5e-3, 5e-3], 2^15, constellation, 2, 8);
+% % mma_out_mimo = mma_out_mimo(:, 1) + 1j*mma_out_mimo(:, 2);
+mf_sig = mf_sig / sqrt(bandpower(mf_sig));
+[mma_out, error, w] = my_mma_lms(mf_sig, 21, 5e-3, 2^15, constellation, 2, 8);
+
+
+
+% [vv_out, estimatedPhase] = V_V(mma_out, 10);
+[fse_out, esfreq] = FSE(mma_out, Fb);
+% [pll_out, esphase] = DDPLL(vv_out, 1/(2*pi*100e6), 1/(2*pi*100e6), 0.25, Fb, 0, constellation);
+[pll_out, esphase_mimo] = DDPLL(fse_out, 1/(2*pi*100e6), 1/(2*pi*100e6), 0.2, Fb, 0, constellation);
+
+
+[mma_out_mimo, error_mimo, w_mimo] = mimo2_2_mma([real(pll_out), imag(pll_out)], 21, [5e-3, 5e-3], 2^15, constellation, 1, 8);
+[bps_out, estimatedPhase] = BPS(fse_out(1:2^15), constellation, 4, 2);
+% [mma_out_mimo, error_mimo, w_mimo] = mimo2_2_mma([real(bps_out), imag(bps_out)], 21, [5e-3, 5e-3], 2^15, constellation, 1, 8);
+
