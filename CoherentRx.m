@@ -28,10 +28,21 @@ classdef CoherentRx < handle
 
         % 参考信号(解码使用)
         function createReferenceSignal(obj)
-            % 函数体，用于创建参考信号
-            qam_signal_ref=obj.Implementation.qam_signal;
-            % 得到用于解码的参考信号
-            obj.Implementation.ref = repmat(qam_signal_ref,1,100);
+            reff=obj.Implementation.qam_signal;
+            if obj.TxPHY.Nmodes == 2
+                for inMode=1:obj.TxPHY.Nmodes
+                    % 函数体，用于创建参考信号
+                    qam_signal_ref(:,inMode)=reff(:,inMode);
+                    % 得到用于解码的参考信号
+                    reeff(:,inMode) = repmat(qam_signal_ref(:,inMode),1,100);
+                end
+                obj.Implementation.ref=reeff;
+            else
+                % 函数体，用于创建参考信号
+                qam_signal_ref=obj.Implementation.qam_signal;
+                % 得到用于解码的参考信号
+                obj.Implementation.ref = repmat(qam_signal_ref,1,100);
+            end
         end
 
         % 创建参考星座图
@@ -278,7 +289,8 @@ classdef CoherentRx < handle
             % 创建变量
             outSignal=zeros(size(input));
             for inMode=1:length(obj.TxPHY.Nmodes)
-                outSignal(:,indMode)=conv(input(:,indMode),obj.signalPHY.hsqrt,'same');
+                input(:,indMode)=input(:,indMode)-mean(input(:,indMode));
+                outSignal(:,indMode)=conv(input(:,indMode),obj.signalPHY.hsqrt ,'same');
                 outSignal(:,indMode)=pnorm(outSignal(:,indMode));
             end
         end

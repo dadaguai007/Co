@@ -1,3 +1,4 @@
+
 %Transmitter parameters:
 clc;clear;close all;
 M   = 4;          % order of the modulation format

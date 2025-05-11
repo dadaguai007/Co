@@ -11,6 +11,7 @@ function H = ideal_lpf(L,f_min,f_max,os)
 
 % Initially written by Andrea Arduino, modified by Dario Pilori
 
+% 直接将信号转换到频域相乘即可
 f_ax = (-L/2:L/2-1)'/L*os;
 H = ones(size(f_ax));
 H((f_ax<f_min-eps)|(f_ax>f_max+eps)) = 0;

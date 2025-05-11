@@ -1,7 +1,4 @@
 classdef CoherentTx < handle
-    % To Do:
-    % 添加延迟函数
-
     % 定义类的属性
     properties
         % 为了方便后续添加变量，采用结构体方式进行变量命名
@@ -115,7 +112,7 @@ classdef CoherentTx < handle
         end
 
         % 相噪建模
-        function   Pin=phaseNoise(obj,sigTx,lw)
+        function   Pin=phaseNoiseMode(obj,sigTx,lw)
             % 相噪建模
             phi_pn_lo = phaseNoise(lw, length(sigTx), 1/obj.TxPHY.fs);
             sigLO = exp(1i * phi_pn_lo);
@@ -134,6 +131,7 @@ classdef CoherentTx < handle
             paramLO.Fs = obj.TxPHY.fs;
             paramLO.N = length(inputSignal);
             sigLO = basicLaserModel(paramLO);
+
         end
 
         % 添加频偏
@@ -164,6 +162,6 @@ classdef CoherentTx < handle
         end
 
 
-        
+
     end
 end

@@ -1,9 +1,19 @@
-clc;clear;close all;
-
-
-
-
 % DSP
+
+
+Fc      = 193.1e12; 
+% 色散恢复
+% CD compensation
+paramEDC    = struct();
+paramEDC.L  = param.Ltotal;
+paramEDC.D  = param.D;
+paramEDC.Fc = Fc;
+paramEDC.Fs = fs;
+
+
+sigCDC = cdc(sig_RxMatch, paramEDC);
+scatterplot(sigCDC(:,1))
+
 
 %均衡即可
 % Equ
