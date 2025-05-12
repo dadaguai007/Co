@@ -6,11 +6,12 @@ classdef BERPlot_David < handle
     %   2021/12/29: add support for display minor ticks in the figure;
     %   2022/01/13: add support for adding legend
     % TODO：
-    %
+    % 计算pental
 
     properties
         % configuration of figures
         Config; % 存储图形的配置参数
+        Button; % 功能开关按键
         flagWhiteMarkerFace = 1; %控制标记的填充颜色
         % interpolation setting
         flagInterpolation = 1;% 标志是否进行插值
@@ -35,7 +36,6 @@ classdef BERPlot_David < handle
         BER_axis = [ 0.5 1e-1 1e-2 1e-3 1e-4 1e-5 1e-6 1e-7 1e-8 1e-9 1e-10...
             1e-11 1e-12];
         color=distinguishable_colors(20);
-        %         color = 'rbkmcyg';
         marker = 'so^d>v*phx';
     end
 
@@ -43,20 +43,23 @@ classdef BERPlot_David < handle
     methods
         function obj = BERPlot_David()
             % initialize the figure configuration
-            Config.AxisLineWidth = 1.25;
-            Config.AxisFontSize = 12;
-            Config.LineWidth =  1.5;
-            Config.MarkerSize = 8;
-            Config.FontSize = 12;
-            Config.FigureSize = [480 400];
+            obj.Config.AxisLineWidth = 1.25;
+            obj.Config.AxisFontSize = 12;
+            obj.Config.LineWidth =  1.5;
+            obj.Config.MarkerSize = 8;
+            obj.Config.FontSize = 12;
+            obj.Config.FigureSize = [480 400];
+            obj.Button.AxisLabelEnabled='off'; % 是否自定义横坐标
+            obj.Button.individual_ThresholdEnabled='on'; % 单图中是否增添FEC 基线
+            obj.Config.xlabelStr=''; % 自定义坐标轴为空
             %Config.AxisLineWidth：坐标轴线的宽度。
             %Config.AxisFontSize：坐标轴上标签的字体大小。
             %Config.LineWidth：曲线的线宽。
             % Config.MarkerSize：标记的大小。
             % Config.FontSize：图像中的字体大小。
             % Config.FigureSize：绘图窗口的大小，以像素为单位。
-            obj.Config = Config;
         end
+
 
         function h = plot(obj,rop,ber,colorId,markerID)
             % Single Plot
@@ -95,9 +98,10 @@ classdef BERPlot_David < handle
             end
 
             figure(99);
-            fit_axis = x_min-5:x_max+5;
-            p = polyfit(rop,qfactor_db,obj.orderInterpolation);
-            q = polyval(p,fit_axis);
+            fit_axis = x_min-5:x_max+5;% 扩展拟合范围
+            p = polyfit(rop,qfactor_db,obj.orderInterpolation);% 多项式拟合
+            q = polyval(p,fit_axis);% 计算拟合曲线
+            % 绘制出拟合曲线
             h(2) = plot(fit_axis,q,...
                 ['-'],...
                 'Color',obj.color(colorId,:),...
@@ -105,25 +109,9 @@ classdef BERPlot_David < handle
 
 
 
-
-            %             h(1) = plot(rop,qfactor_db,...
-            %                 [obj.marker(markerID)],...
-            %                 'Linewidth',obj.Config.LineWidth,...
-            %                 'MarkerEdgeColor',obj.color(colorId,:),...
-            %                 'MarkerFaceColor',mfc,...
-            %                 'MarkerSize',obj.Config.MarkerSize);
-
             % interpolation if needed
             if obj.flagInterpolation
                 figure(99); hold on;
-
-                %                 fit_axis = x_min-5:x_max+5;
-                %                 p = polyfit(rop,qfactor_db,obj.orderInterpolation);
-                %                 q = polyval(p,fit_axis);
-                %                 h(1) = plot(fit_axis,q,...
-                %                     ['-'],...
-                %                     'Color',obj.color(colorId,:),...
-                %                     'Linewidth',obj.Config.LineWidth);
 
                 h(1) = plot(rop,qfactor_db,...
                     [obj.marker(markerID)],...
@@ -133,7 +121,7 @@ classdef BERPlot_David < handle
                     'MarkerSize',obj.Config.MarkerSize);
 
                 % plot a new invisible line only for generating legend
-                h(3) = plot(fit_axis+50,q,...
+                h(3) = plot(fit_axis+50,q,...        %  x轴偏移+50，超出可视区域
                     ['-',obj.marker(markerID)],...
                     'Color',obj.color(colorId,:),...
                     'Linewidth',obj.Config.LineWidth,...
@@ -141,6 +129,17 @@ classdef BERPlot_David < handle
                     'MarkerFaceColor',mfc,...
                     'MarkerSize',obj.Config.MarkerSize);
             end
+            % 绘制 FEC 基线
+            if strcmp(obj.Button.individual_ThresholdEnabled,'on')
+                Threshold_qfactor_db = obj.ber2q(3.8e-3);
+                figure(99);hold on;
+                h(4) = plot(rop,Threshold_qfactor_db*ones(1,length(rop)),...
+                    '--','Linewidth',2,...
+                    'Color',obj.color(12,:));
+                hold off;
+            end
+
+
             % set the axis
             set(gca,'xlim',[x_min, x_max],...
                 'xtick', x_min:obj.interval:x_max);
@@ -154,17 +153,23 @@ classdef BERPlot_David < handle
                 '10^{-11}','10^{-12}'},...
                 'fontsize',obj.Config.FontSize)
             set(gca, 'FontName', 'Arial');
+
             if obj.flagMinorTick
                 obj.addYMinorTick;
-                %                                 set(gca,'YMinorGrid','on','MinorGridAlpha',0.1);
+                %set(gca,'YMinorGrid','on','MinorGridAlpha',0.1);
             end
             set(gcf,'pos',[200,200,obj.Config.FigureSize]);
             set(gca, 'LineWidth',obj.Config.AxisLineWidth);
-
+            % 图片显示为方格
             box on;
+            % 网格线打开
             grid on;
             set(gca, 'GridLineStyle', '--'); % 设置网格线为虚线
-            xlabel('Received optical power (dBm)');
+            if  strcmp(obj.Button.AxisLabelEnabled,'off')
+                xlabel('Received optical power (dBm)');
+            elseif strcmp(obj.Button.AxisLabelEnabled,'on')
+                xlabel(obj.Config.xlabelStr);
+            end
             ylabel('Bit error ratio');
             hold off;
         end
@@ -187,6 +192,8 @@ classdef BERPlot_David < handle
             if ~isequal(size(ropMat), size(berMat))
                 error('ropMat and berMat should have the same size!');
             end
+            % 关闭单图的FEC 基线，后续再重新添加基线
+            obj.Button.individual_ThresholdEnabled='off';
 
             [nPlots,~] = size(ropMat);
 
@@ -203,6 +210,8 @@ classdef BERPlot_David < handle
                     markerIDvec(idx));
                 hold off;
             end
+
+            % 绘制 FEC 基线
             if obj.flagThreshold
                 Threshold_qfactor_db = obj.ber2q(3.8e-3);
                 figure(99);hold on;
@@ -212,6 +221,7 @@ classdef BERPlot_David < handle
                 h{idx+1}(3)=h{idx+1}(1);
                 hold off;
             end
+
             if obj.flagRedraw
                 y_min= obj.ber2q(3e-2);
                 y_max= obj.ber2q(4e-4);
@@ -228,7 +238,6 @@ classdef BERPlot_David < handle
             if obj.flagAddLegend
                 if isempty(legendStrArry)
                     fprintf('No input legend string, default will be used!\n');
-                    % TODO
                 end
                 for idx = 1:length(h)
                     lv(idx) = h{idx}(3);
@@ -238,6 +247,8 @@ classdef BERPlot_David < handle
                     set(lgd, 'Color', 'none'); % 设置图例框的颜色为'none'
                     set(lgd, 'Box', 'off');
                 end
+
+
                 if 0
                     lgd=legend(lv(1:4),legendStrArry{1:4},'Location','best');
                     if obj.legendflage
@@ -253,8 +264,108 @@ classdef BERPlot_David < handle
                     end
                     set(lgd1,'FontName','Arial','FontSize',obj.Config.FontSize);
                 end
+
+
             end
         end
+
+
+        function plot_other(obj,rop,ber)
+            % 绘制其他参数关于误码率的图例，不需要进行拟合，格式保持一致
+
+            % Single Plot
+            % rop: vector for received optical power
+            % ber: vector for bit error rate
+            if nargin < 4
+                colorId = 1;
+                markerID = 1;
+            end
+            % make rop and ber in row factor
+            rop = reshape(rop,1,[]);
+            ber = reshape(ber,1,[]);
+            % check if the rop vector is in monotonically increasing order
+            %检查 rop 向量是否是递增的，如果不是，会将 rop 和 ber 向量进行反转，并显示警告信息。
+            if any(diff(rop)<0)
+                rop = fliplr(rop);
+                ber = fliplr(ber);
+                warning('Input rop vector should be in increasing order!');
+            end
+            % calculate Q-factor from BER
+            qfactor_db = obj.ber2q(ber);
+            % calculate the range of Q axis
+            q_axis_db = obj.ber2q(obj.BER_axis);
+            % find the min. and max. for x axis
+            x_min = floor(min(rop));
+            x_max = ceil(max(rop));
+            % find the min. and max. for y axis
+            y_min = max(q_axis_db(q_axis_db<min(qfactor_db)));
+            y_max = min(q_axis_db(q_axis_db>max(qfactor_db)));
+
+            % now plot in Q factor
+            if obj.flagWhiteMarkerFace
+                mfc = 'w';
+            else
+                mfc = obj.color(colorId,:);
+            end
+
+
+            figure(99); hold on;
+
+            h(1) = plot(rop,qfactor_db,...
+                [obj.marker(markerID)],...
+                'Linewidth',obj.Config.LineWidth,...
+                'MarkerEdgeColor',obj.color(colorId,:),...
+                'MarkerFaceColor',mfc,...
+                'MarkerSize',obj.Config.MarkerSize);
+
+
+            % 绘制 FEC 基线
+            if strcmp(obj.Button.individual_ThresholdEnabled,'on')
+                Threshold_qfactor_db = obj.ber2q(3.8e-3);
+                figure(99);hold on;
+                h(2) = plot(rop,Threshold_qfactor_db*ones(1,length(rop)),...
+                    '--','Linewidth',2,...
+                    'Color',obj.color(12,:));
+                hold off;
+            end
+
+
+            % set the axis
+            set(gca,'xlim',[x_min, x_max],...
+                'xtick', x_min:obj.interval:x_max);
+            set(gca,'YDir', 'reverse');
+            set(gca,'ylim',[y_min y_max],...
+                'linewidth' , 1.5,...
+                'ytick',q_axis_db,...
+                'yticklabel',...
+                {'10^0','10^{-1}','10^{-2}','10^{-3}','10^{-4}','10^{-5}',...
+                '10^{-6}','10^{-7}','10^{-8}','10^{-9}','10^{-10}',...
+                '10^{-11}','10^{-12}'},...
+                'fontsize',obj.Config.FontSize)
+            set(gca, 'FontName', 'Arial');
+
+            if obj.flagMinorTick
+                obj.addYMinorTick;
+                %set(gca,'YMinorGrid','on','MinorGridAlpha',0.1);
+            end
+            set(gcf,'pos',[200,200,obj.Config.FigureSize]);
+            set(gca, 'LineWidth',obj.Config.AxisLineWidth);
+            % 图片显示为方格
+            box on;
+            % 网格线打开
+            grid on;
+            set(gca, 'GridLineStyle', '--'); % 设置网格线为虚线
+            if  strcmp(obj.Button.AxisLabelEnabled,'off')
+                xlabel('Received optical power (dBm)');
+            elseif strcmp(obj.Button.AxisLabelEnabled,'on')
+                xlabel(obj.Config.xlabelStr);
+            end
+            ylabel('Bit error ratio');
+            hold off;
+
+        end
+
+
 
         function repositionImageVertically(obj,ber)
             % 输入 最大和最小的两组BER信号,
@@ -266,15 +377,19 @@ classdef BERPlot_David < handle
             % calculate the range of Q axis
             q_axis_db = obj.ber2q(obj.BER_axis);
             % find the min. and max. for y axis
-            y_min = max(q_axis_db(q_axis_db<min(qfactor_db)));
+            y_max = min(q_axis_db(q_axis_db>max(qfactor_db)));
             % 输入 最大 BER组
             qfactor_db1 = obj.ber2q(ber(2,:));
-            y_max = min(q_axis_db(q_axis_db>max(qfactor_db1)));
+            y_min = max(q_axis_db(q_axis_db<min(qfactor_db1)));
             set(gca,'ylim',[y_min y_max]);
         end
 
+        % 生成次要刻度BER值：
+        % 主刻度之间的精细划分：在相邻主刻度（如1e-1和1e-2）之间生成9个次要刻度，例如9e-2, 8e-2, ..., 2e-2。
+
         function addYMinorTick(obj)
             % generate the minor ticks
+            % 主刻度区间：1e-2到1e-12之间的次要刻度
             minorTickBER = obj.BER_axis(3:end).'*(9:-1:2);
             minorTickBER = [(4:-2).'*obj.BER_axis(2);...
                 reshape(minorTickBER.',[],1)];
@@ -285,7 +400,7 @@ classdef BERPlot_David < handle
             hA.YAxis.MinorTick = 'on';
         end
 
-        function q = ber2q(obj,BER) %将BER转换为Q因子（估计信号质量的度量）
+        function q = ber2q(~,BER) %将BER转换为Q因子（估计信号质量的度量）
             % method 1: Taylor expansion
             q = 20*log10(0.71839 - 1.00208*log10(BER) - 0.08037*log10(BER).^2 - ...
                 0.0054*log10(BER).^3 - 2.07568e-4*log10(BER).^4 - 3.36139e-6*log10(BER).^5);
@@ -293,6 +408,15 @@ classdef BERPlot_David < handle
             %   this method cannot handle the case: BER = 0.5;
             % q = pow2db(erfcinv(BER.*2)*sqrt(2))*2
         end
+
+        function  reqOSNR=getPenalty(~,rop,BERs)
+            % 确认输入BER数组的形式，每一列代表一个BER曲线
+            if size(BERs,2)>size(BERs,1)
+                BERs=BERs.'; % 转置
+            end
+            reqOSNR = getOSNRPenalty(rop, BERs, 3.8e-3);
+        end
+
     end
 
 
