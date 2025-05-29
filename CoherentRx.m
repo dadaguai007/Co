@@ -288,7 +288,7 @@ classdef CoherentRx < handle
         function outSignal=matchFiltering(obj,input)
             % 创建变量
             outSignal=zeros(size(input));
-            for inMode=1:length(obj.TxPHY.Nmodes)
+            for indMode=1:length(obj.TxPHY.TxPHY.Nmodes)
                 input(:,indMode)=input(:,indMode)-mean(input(:,indMode));
                 outSignal(:,indMode)=conv(input(:,indMode),obj.signalPHY.hsqrt ,'same');
                 outSignal(:,indMode)=pnorm(outSignal(:,indMode));
