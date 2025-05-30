@@ -2,7 +2,7 @@ clc;clear;close all;
 addpath('Fncs\')
 addpath('Plot\')
 addpath('Dsp\')
-addpath('D:\BIT_PhD\Base_Code\Codebase_using\')
+% addpath('D:\BIT_PhD\Base_Code\Codebase_using\')
 % addpath('D:\PhD\Project\Base_Code\Base\')
 
 % 发射机参数
@@ -11,23 +11,28 @@ Tx=CoherentTx(     ...
     32e9, ...                % 发射信号的波特率
     2, ...                   % 随机信号的阶数
     15, ...                  % prbs码的阶数
-    16, ...                  % 调制格式 M
+    4, ...                   % 调制格式 M
     64e9/32e9, ...           % 每符号采样点
     1e5, ...                 % 码元数目
     2, ...                   % 偏振状态
     'sqrt', ...              % 脉冲形式
     0.2, ...                 % 滚降系数
-    4096, ...                % 影响长度
+    10, ...                  % 影响长度
     'nrz', ...               % 用户的成型滤波器
     'rand', ...              % 选择模式
     'system');               % 成型滤波器的生成方式
 
 fs=Tx.TxPHY.fs;
 fb=Tx.TxPHY.fb;
-ta  = 1/fs;
+Ts=1/fb;
+Ta= 1/fs;
+M=Tx.TxPHY.M;
+
 % 成型滤波器
 hsqrt = Tx.systemHsqrt();
 
+
+Fc      = 193.1e12; % central optical frequency
 % IQM 调制器参数
 paramIQ.Vpi=2;
 paramIQ.VbI=-paramIQ.Vpi;
@@ -47,9 +52,9 @@ param.hz= 0.5;
 param.alpha=0.2;
 param.D = 16;
 param.gamma = 1.3;
-param.Fc = 193.1e12;
+param.Fc = Fc;
 param.NF = 4.5;
-param.amp='ideal';
+param.amp='edfa';
 param.Fs=fs;
 param.maxIter = 10;      % maximum number of convergence iterations per step
 param.tol = 1e-5;       % error tolerance per step

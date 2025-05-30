@@ -6,7 +6,7 @@ function [value,percent] = amplitude_distribution(input)
     percent = distribution_table(:,3)/100;       % 百分比转换
     figure
     plot(value,percent);                         % 绘制分布图
-    title('amplitude_distribution');
+    title('amplitude distribution');
 end
 
 % 均匀量化函数

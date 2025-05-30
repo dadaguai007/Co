@@ -6,12 +6,13 @@ classdef DspSyncDecoding < handle
         signalPHY; % 传入的信号参数
         Nr%无量纲参数
         Implementation;% 参考信号实施参数
+        Button; % 开关信号
     end
 
     methods
         function obj = DspSyncDecoding(varargin)
             %初始化类的属性
-            if numel(varargin) == 7
+            if numel(varargin) == 8
                 obj.signalPHY.fs            = varargin{1} ;% 接收信号的采样率
                 obj.signalPHY.fb            = varargin{2} ;% 接收信号的波特率
                 obj.signalPHY.M             = varargin{3} ;% 接收信号的格式
@@ -19,12 +20,14 @@ classdef DspSyncDecoding < handle
                 obj.Nr.time_osr             = varargin{5} ;% 时钟信号的上采样率
                 obj.Nr.ncut_index           = varargin{6} ;% 误码计算起始位置
                 obj.Implementation.ref      = varargin{7} ;% 参考信号
+                obj.Implementation.TED      = varargin{8} ;% 时钟误差计算方式，采用何种时钟算法
             end
             obj.Implementation.sync_type = 'gardner';      % 时钟误差计算方式
             obj.Implementation.loop_gain = 0.03;           % PLL的环路增益, 控制环路收敛速度和稳定性的增益系数
-            obj.Implementation.TED       ="MLTED" ;        % 时钟误差计算方式，另一种实现方式
-            obj.Implementation.eta       = 1;              % 环路阻尼因子（稳定性控制）
-            obj.Implementation.Bn_Ts     = 0.01;           % 环路带宽 × 符号周期（控制同步速度）
+%             obj.Implementation.TED       ="MLTED" ;        % 时钟误差计算方式，另一种实现方式
+%             obj.Implementation.eta       = 1;              % 环路阻尼因子（稳定性控制）
+%             obj.Implementation.Bn_Ts     = 0.01;           % 环路带宽 × 符号周期（控制同步速度）
+           obj.Button.freqRecover='off';
         end
 
 
@@ -66,8 +69,13 @@ classdef DspSyncDecoding < handle
         function   [DeWaveform,P,OptSampPhase,MaxCorrIndex]=time_phase_Recovery(obj,input_signal)
             % 参考信号
             label=obj.Implementation.ref;
-            % 对输入信号执行时间（频率）恢复 和 同步
-            clk_output=obj.ClockRecovery(input_signal);
+            if strcmp(obj.Button.freqRecover,'on')
+                % 对输入信号执行时间（频率）恢复 
+                clk_output=obj.ClockRecovery(input_signal);
+            else
+                % 不进行任何操作
+                clk_output=input_signal;
+            end
             % 数字采样相位恢复
             fs_up=obj.Nr.sps*obj.signalPHY.fb; % 信号所采取的时钟
             [DeWaveform,P,OptSampPhase,MaxCorrIndex] = Quick_Syn_Vec(clk_output,label,1/fs_up,1/obj.signalPHY.fb);
@@ -154,9 +162,9 @@ classdef DspSyncDecoding < handle
 
 
         % 最佳相位恢复（使用解析法创造 TED）
-        function [rxSync,Kp] = TED_recoverOptimalSamplingPoints(obj,rxSeq,mfOut,rollOff,rcDelay,const)
+        function [rxSync,Kp] = TED_recoverOptimalSamplingPoints(obj,rxSeq,mfOut,rollOff,rcDelay,const,Ksym)
             % 计算环路增益(计算定时误差检测器（TED）的增益 )
-            Kp  = calcTedKp(obj.ImplementationTED, rollOff);
+            Kp  = calcTedKp(obj.Implementation.TED, rollOff);
             % 两种方法计算增益：'analytic'（解析法）或 'simulated'（仿真法），默认为解析法
 
             % 计数器增益（类似VCO增益）
@@ -173,12 +181,8 @@ classdef DspSyncDecoding < handle
             debug_tl_static  = 0; % Show static debug plots after sync processing
             debug_tl_runtime = 0; % Open scope for debugging of sync loop iterations
 
-            % 对参考信号进行归一化
-            Ksym = modnorm(const, 'avpow', 1);
-            const = Ksym * const;
-
             %symbol timing recovery implementation
-            [ rxSync ] = symbolTimingSync(obj.Implementation.TED, obj.intpl, obj.Nr.sps, rxSeq, mfOut, K1, K2, ...
+            [ rxSync ] = symbolTimingSync(obj.Implementation.TED, obj.Implementation.intpl, obj.Nr.sps, rxSeq, mfOut, K1, K2, ...
                 const, Ksym, rollOff, rcDelay, debug_tl_static, debug_tl_runtime);
 
         end
@@ -191,7 +195,10 @@ classdef DspSyncDecoding < handle
         function rxSync = systemRecoverOptimalSamplingPoints(obj,mfOut,rollOff)
 
             % 计算环路增益(计算定时误差检测器（TED）的增益 )
-            Kp  = calcTedKp(obj.ImplementationTED, rollOff);
+            Kp  = calcTedKp(obj.Implementation.TED, rollOff);
+            % 调整增益（考虑符号能量）
+            K  = 1;           % 假设信道增益为1（实际系统需AGC）
+            Kp = K * obj.Implementation.Ex * Kp; % 调整后的TED增益
             % 使用函数将缩写与全称 相对应
             tedMap = containers.Map({'ELTED', 'ZCTED', 'GTED', 'MMTED'}, ...
                 {'Early-Late (non-data-aided)', ...

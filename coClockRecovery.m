@@ -1,10 +1,6 @@
 % CO system Train
 clc;close all;clear;
 
-% To Do：
-% 采样时钟偏移的加入方式需要进行优化
-
-
 %% 信号生成
 coherentGenerationClock;
 % 添加路径
@@ -21,16 +17,19 @@ debug_tl_runtime = 0; % 运行时调试标志（1=显示同步过程示波器）
 %% 时间轴和频率轴创建
 [freq,time]   =  freq_time_set(Tx.TxPHY.NSym *Tx.TxPHY.sps,fs);
 % 发射信号 
-[txSig,QPSK]  =  Tx.dataOutput();
+[txSig,qamSig]  =  Tx.dataOutput();
 
-
+% 参考信号
+label=qamSig;
+% 数据性能起始位置
+skip = 0.2 * Tx.TxPHY.NSym; % 跳过初始瞬态（20%符号）
 %% 定时恢复环路参数
 Bn_Ts    = 0.01;       % 环路带宽×符号周期（归一化噪声带宽）
 eta      = 1;          % 环路阻尼系数（控制收敛速度）
 
 % 信号处理参数
 timeOffset = 25;       % 信道延迟（采样点数）
-fsOffsetPpm =200;       % 采样时钟频偏（ppm单位）
+fsOffsetPpm =0;       % 采样时钟频偏（ppm单位）
 EsN0     = 20;         % 信噪比（Es/N0 dB）
 Ex       = 1;          % 符号平均能量
 TED      = 'GTED';    % 定时误差检测器类型（关键算法选择） 'ELTED', 'ZCTED', 'GTED', 'MMTED','MLTED'% 五种算法
@@ -65,7 +64,21 @@ K0 = -1;          % 计数器增益（类似DDS的灵敏度）
 % 打印环路参数
 fprintf("环路常数:\n");
 fprintf("K1 = %g; K2 = %g; Kp = %g\n", K1, K2, Kp);
-
+%% ClockRecover paramer
+% 参数初始化
+clockRecovery = DspSyncDecoding( ...
+    fs,...         % 接收信号的采样率
+    fb, ...        % 接收信号的波特率
+    16,...         % 接收信号的格式
+    fs/fb, ...     % 上采样率
+    [],...         % 时钟信号的上采样率
+    skip, ...      % 误码计算起始位置
+    label,...      % 参考信号
+    "MLTED");             
+clockRecovery.Implementation.eta       = eta;              % 环路阻尼因子（稳定性控制）
+clockRecovery.Implementation.Bn_Ts     = Bn_Ts;           % 环路带宽 × 符号周期（控制同步速度）
+clockRecovery.Implementation.Ex =1;
+clockRecovery.Implementation.intpl=2;          % 插值方法：0=多相，1=线性，2=二次，3=三次
 %% Train
 % 模拟采样时钟偏移（通过重采样）【可以进行优化，使用插值函数】
 fsRatio = 1 + (fsOffsetPpm * 1e-6); % 计算频率比例（Rx/Tx）
@@ -73,7 +86,17 @@ tol = 1e-9;                          % 重采样容差
 [P, Q] = rat(fsRatio, tol);          % 转换为有理分数
 txResamp = resample(txSig, P, Q);    % 执行重采样
 
+
+% 应用集成的时钟偏移函数
+ppm=-0.5;
+jitter_rms=0; %1e-10
+txResamp1=Rx.addSamplingClockOffset(txSig,ppm,jitter_rms);
+
 % 信道延迟
+% delay=38e-1;
+% 集成的延迟函数
+% delaySig=Rx.addSkew(txResamp,delay);
+
 delaySig = step(DELAY, txResamp);    % 添加固定延迟;直接添加零
 
 % 添加高斯白噪声（AWGN）
@@ -96,10 +119,10 @@ rcDelay=Tx.Nr.psfLength ;
 sps=Tx.TxPHY.sps;
 [ rxSync1 ] = symbolTimingSync(TED, intpl, sps, rxSeq, mfOut, K1, K2, ...
     const, Ksym, rollOff, rcDelay, debug_tl_static, debug_tl_runtime);
-
-
+% 集成的算法
+[rxSync2,Kp] = clockRecovery.TED_recoverOptimalSamplingPoints(rxSeq,mfOut,rollOff,rcDelay,const,Ksym);
 %% 性能评估
-skip = 0.2 * Tx.TxPHY.NSym; % 跳过初始瞬态（20%符号）
+
 
 % 计算并显示MER结果
 fprintf("\n测量MER结果:\n")

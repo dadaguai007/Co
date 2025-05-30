@@ -29,12 +29,12 @@ classdef CoherentRx < handle
         % 参考信号(解码使用)
         function createReferenceSignal(obj)
             reff=obj.Implementation.qam_signal;
-            if obj.TxPHY.Nmodes == 2
-                for inMode=1:obj.TxPHY.Nmodes
+            if obj.TxPHY.TxPHY.Nmodes == 2
+                for inMode=1:obj.TxPHY.TxPHY.Nmodes
                     % 函数体，用于创建参考信号
                     qam_signal_ref(:,inMode)=reff(:,inMode);
                     % 得到用于解码的参考信号
-                    reeff(:,inMode) = repmat(qam_signal_ref(:,inMode),1,100);
+                    reeff(:,inMode) = repmat(qam_signal_ref(:,inMode),100,1);
                 end
                 obj.Implementation.ref=reeff;
             else
@@ -46,11 +46,15 @@ classdef CoherentRx < handle
         end
 
         % 创建参考星座图
-        function creatReferenceConstellation(obj)
+        function [const,Ksym]=creatReferenceConstellation(obj)
             % Constellation
-            z = (0:obj.TxPHY.M-1)';
-            obj.Implementation.constellation = qammod(z,obj.TxPHY.M);
-            % 是否需要进行
+            z = (0:obj.TxPHY.TxPHY.M-1)';
+            % 星座图生成
+            const=qammod(z,obj.TxPHY.TxPHY.M);
+            Ex       = 1;          % 符号平均能量
+            Ksym = modnorm(const, 'avpow', Ex);   % 能量归一化因子
+            obj.Implementation.constellation  = Ksym * const; % 调整后的参考星座
+            
         end
 
 
@@ -213,7 +217,12 @@ classdef CoherentRx < handle
 
         end
 
-
+        % 对信号进行加噪
+        function dataOut=addNoiseEbN0(~,datain,Eb_N0_dB)
+            noise=EbN0_dB(datain,Eb_N0_dB);
+            % 加入噪声
+            dataOut = datain+noise;
+        end
 
 
 
@@ -223,11 +232,33 @@ classdef CoherentRx < handle
                 % 应用I路延迟（Q路不变）
                 % delay = 50e-12;    % 50ps延迟
                 s_skewed = iqdelay(input, obj.signalPHY.fs, delay);
+                s_skewed=s_skewed.';
             end
         end
 
+        % ADC 加入采样时钟偏移
+        function Eout=addSamplingClockOffset(obj,Ei,ppm,jitter_rms,fsBase_ADC)
+            if nargin<5
+            % 默认ADC的基准采样率为系统的采样率
+                fsBase_ADC=obj.signalPHY.fs;
+            end
+            Fs_in=obj.signalPHY.fs;
+            Fs_adc = fsBase_ADC*(1 + ppm/1e6);
+            ppm_meas = (Fs_adc-fsBase_ADC)/(fsBase_ADC)*1e6;
+            fprintf('ADC sampling rate = %.5f GS/s\n',Fs_adc/1e9);
+            fprintf('ADC sampling clock drift = %.2f ppm\n',ppm_meas);
 
-        %应用jitter,频偏,量化噪声
+            if ~isreal(Ei)
+                % Signal interpolation to the ADC's sampling frequency
+                Eout = clockSamplingInterp(real(Ei), Fs_in, Fs_adc, jitter_rms) + 1i * clockSamplingInterp(imag(Ei), Fs_in, Fs_adc, jitter_rms);
+            else
+                % Signal interpolation to the ADC's sampling frequency
+                Eout = clockSamplingInterp(Ei, Fs_in, Fs_adc, jitter_rms);
+            end
+
+        end
+
+        %应用jitter,频偏,量化噪声，ADC模块
         function outSignal=applyADC(obj,input,ppm)
 
             % adc的采样频偏
@@ -260,7 +291,7 @@ classdef CoherentRx < handle
         % 信号传输
         function outSignal=signalTran(obj,input,param)
 
-            if obj.TxPHY.Nmodes == 2
+            if obj.TxPHY.TxPHY.Nmodes == 2
                 % 双偏振传输
                 outSignal = manakovssfm(input, param);
             else
@@ -275,7 +306,7 @@ classdef CoherentRx < handle
         % 相干接收
         function outSignal=coherentReceive(obj,input,LO,theta,paramPD)
             % 判断信号是双偏振 or 单偏振
-            if obj.TxPHY.Nmodes == 2
+            if obj.TxPHY.TxPHY.Nmodes == 2
                 outSignal=pdmCoherentReceiver(input, LO, theta, paramPD);
             else
                 outSignal=coherentReceiver(input,LO,paramPD);
@@ -288,12 +319,34 @@ classdef CoherentRx < handle
         function outSignal=matchFiltering(obj,input)
             % 创建变量
             outSignal=zeros(size(input));
-            for indMode=1:length(obj.TxPHY.TxPHY.Nmodes)
+            for indMode=1:obj.TxPHY.TxPHY.Nmodes
                 input(:,indMode)=input(:,indMode)-mean(input(:,indMode));
                 outSignal(:,indMode)=conv(input(:,indMode),obj.signalPHY.hsqrt ,'same');
                 outSignal(:,indMode)=pnorm(outSignal(:,indMode));
             end
         end
+
+
+
+        % 器件频域响应模型
+        function [filt,H]=createFrequencyResponse(obj,freq,order,f3dB,verbose)
+            %f3dB=20e9;
+            %order=5;
+            %verbose=0;
+            % 归一化的截止频率
+            fcnorm = f3dB/(obj.signalPHY.fs/2);
+            if strcmp(obj.Implementation.responType,'Bessel')
+                filt=Besslf_filter(order,fcnorm,verbose);
+                % 获取频响 (已经去除延时)
+                H = filt.H(freq/obj.signalPHY.fs);
+            elseif strcmp(obj.Implementation.responType,'Gaussion')
+                % 高斯滤波器
+                nlength=length(freq);
+                filt=Gaussian_filter(order,fcnorm,nlength,verbose);
+                H = filt.H(freq/obj.signalPHY.fs);
+            end
+        end
+
 
         % 色散补偿
         function outSignal=cdCompensation(obj,input,paramEDC)
@@ -329,8 +382,6 @@ classdef CoherentRx < handle
             Pref = bandpower(input);
             EVM = sqrt(Pe./Pref);
         end
-
-
 
 
     end

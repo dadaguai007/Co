@@ -10,27 +10,34 @@ coherentGenerationClock;
 % 时间轴和频率轴创建
 [freq,time]   =  freq_time_set(Tx.TxPHY.NSym *Tx.TxPHY.sps,fs);
 % 发射信号 
-[txSig,QPSK]  =  Tx.dataOutput();
+[txSig,qamSig]  =  Tx.dataOutput();
 
-
+% 参考信号
+label=qamSig;
+% 数据性能起始位置
+skip = 0.2 * Tx.TxPHY.NSym; % 跳过初始瞬态（20%符号）
 %% 定时恢复环路参数
 Bn_Ts    = 0.01;       % 环路带宽×符号周期（归一化噪声带宽）
 eta      = 1;          % 环路阻尼系数（控制收敛速度）
 
 % 信号处理参数
 timeOffset = 25;       % 信道延迟（采样点数）
-fsOffsetPpm =0;       % 采样时钟频偏（ppm单位）
+fsOffsetPpm =200;       % 采样时钟频偏（ppm单位）
 EsN0     = 20;         % 信噪比（Es/N0 dB）
 Ex       = 1;          % 符号平均能量
-TED      = 'ELTED';    % 定时误差检测器类型（关键算法选择） 'ELTED', 'ZCTED', 'GTED', 'MMTED' % 四种算法
+TED      = 'MMTED';    % 定时误差检测器类型（关键算法选择） 'ELTED', 'ZCTED', 'GTED', 'MMTED' % 四种算法
 intpl    = 2;          % 插值方法：0=多相，1=线性，2=二次，3=三次
 forceZc  = 0;          % 强制零交符号模式（调试自噪声）
+rollOff=Tx.Nr.psfRollOff; % 脉冲成型系数
+
 % 延迟模块（模拟信道延迟）
 DELAY = dsp.Delay(timeOffset);
 
 % 参考信号
 M=Tx.TxPHY.M;
 const = qammod(0:M-1,M );          % QAM星座图
+Ksym = modnorm(const, 'avpow', Ex);   % 能量归一化因子
+const = Ksym * const;                 % 调整后的参考星座
 % 调制误差率(MER)测量模块
 mer = comm.MER;
 mer.ReferenceSignalSource = 'Estimated from reference constellation';
@@ -66,12 +73,34 @@ SYMSYNC = comm.SymbolSynchronizer(...
     'DampingFactor', eta, ...                    % 阻尼系数
     'DetectorGain', Kp);                         % 检测器增益
 
+
+
+%% ClockRecover paramer
+% 参数初始化
+clockRecovery = DspSyncDecoding( ...
+    fs,...         % 接收信号的采样率
+    fb, ...        % 接收信号的波特率
+    16,...         % 接收信号的格式
+    fs/fb, ...     % 上采样率
+    [],...         % 时钟信号的上采样率
+    skip, ...      % 误码计算起始位置
+    label,...      % 参考信号
+    "MLTED");             
+clockRecovery.Implementation.eta       = eta;              % 环路阻尼因子（稳定性控制）
+clockRecovery.Implementation.Bn_Ts     = Bn_Ts;           % 环路带宽 × 符号周期（控制同步速度）
+clockRecovery.Implementation.Ex =1;
 %% Train
 % 模拟采样时钟偏移（通过重采样）【可以进行优化，使用插值函数】
 fsRatio = 1 + (fsOffsetPpm * 1e-6); % 计算频率比例（Rx/Tx）
 tol = 1e-9;                          % 重采样容差
 [P, Q] = rat(fsRatio, tol);          % 转换为有理分数
 txResamp = resample(txSig, P, Q);    % 执行重采样
+
+% 应用集成的时钟偏移函数
+ppm=-0.5;
+jitter_rms=0; %1e-10
+txResamp1=Rx.addSamplingClockOffset(txSig,ppm,jitter_rms);
+
 
 % 信道延迟
 delaySig = step(DELAY, txResamp);    % 添加固定延迟;直接添加零
@@ -93,9 +122,11 @@ rxPerfectSync = downsample(mfOut, Tx.TxPHY.sps, timeOffset); % 完美同步
 % MATLAB内置定时恢复
 rxSync2 = step(SYMSYNC, mfOut);      % 调用系统对象
 
+% 集成使用系统自带的函数
+rxSync1 = clockRecovery.systemRecoverOptimalSamplingPoints(mfOut,rollOff);
 
 %% 性能评估
-skip = 0.2 * Tx.TxPHY.NSym; % 跳过初始瞬态（20%符号）
+
 
 % 计算并显示MER结果
 fprintf("\n测量MER结果:\n")
@@ -113,6 +144,6 @@ if debug_tl_static
      scatterplot(rxPerfectSync(skip:end)); % 理想同步
     title('理想定时恢复');
 
-     scatterplot(rxSync2(skip:end));       % MATLAB算法
+     scatterplot(rxSync1(skip:end));       % MATLAB算法
     title(sprintf('MATLAB %s 算法', matlabTed));
 end

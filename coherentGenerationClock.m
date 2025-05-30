@@ -1,4 +1,3 @@
-clc;clear;close all;
 addpath('Fncs\')
 addpath('Plot\')
 addpath('Dsp\')
@@ -17,7 +16,7 @@ Tx=CoherentTx(     ...
     1, ...                   % 偏振状态
     'sqrt', ...              % 脉冲形式
     0.2, ...                 % 滚降系数
-    10, ...                % 影响长度
+    10, ...                  % 影响长度
     'nrz', ...               % 用户的成型滤波器
     'rand', ...              % 选择模式
     'system');               % 成型滤波器的生成方式
@@ -32,7 +31,7 @@ hsqrt = Tx.systemHsqrt();
 paramIQ.Vpi=2;
 paramIQ.VbI=-paramIQ.Vpi;
 paramIQ.VbQ=-paramIQ.Vpi;
-paramIQ.Vphi=paramIQ.Vpi/2;
+paramIQ.Vphi=paramIQ.Vpi/3;
 % PD 参数
 paramPD=struct();
 paramPD.B =fb;
